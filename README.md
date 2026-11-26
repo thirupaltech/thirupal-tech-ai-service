@@ -1,6 +1,6 @@
 # ThirupalTech Community AI
 
-An independently deployable Spring Boot REST microservice that provides general conversational answers using Google Gemini through Spring AI. This initial release does not connect to the ThirupalTech backend or a database and does not retrieve live community information.
+An independently deployable Spring Boot REST microservice that provides general conversational answers using Groq through Spring AI, with Google Gemini as an automatic fallback. This initial release does not connect to the ThirupalTech backend or a database and does not retrieve live community information.
 
 ## Architecture
 
@@ -9,8 +9,9 @@ React application
     -> POST /api/v1/community-ai/chat
     -> Spring Boot controller and validation
     -> CommunityAIService
-    -> Spring AI ChatClient
-    -> Google Gemini API
+    -> AIProvider interface
+        -> GroqAIProvider -> Groq API (primary)
+        -> GeminiAIProvider -> Google Gemini API (fallback)
 ```
 
 The configured system prompt sets community-focused behavior and makes it clear that current events or program details are not available. The prompt, model, and generation settings are configurable without exposing provider credentials to the React client.
@@ -22,29 +23,33 @@ The configured system prompt sets community-focused behavior and makes it clear 
 - Spring AI 1.1.8
 - Maven
 - Spring Web, Validation, Actuator
-- Google Gemini Developer API (Google GenAI)
+- Groq API (OpenAI-compatible)
+- Google Gemini Developer API (Google GenAI, fallback)
 
 ## Prerequisites
 
 - JDK 17
 - Maven 3.9+
-- A Gemini API key from [Google AI Studio](https://aistudio.google.com/app/apikey)
+- A Groq API key from [Groq Console](https://console.groq.com/keys)
+- A Gemini API key from [Google AI Studio](https://aistudio.google.com/app/apikey) for fallback
 
 ## Local setup
 
-From this directory, set the API key in your shell. Never put the key in React or commit it to source control.
+From this directory, set both API keys in your shell. Groq is tried first; Gemini is called only if Groq fails. Never put keys in React or commit them to source control.
 
 The root `env.default` file is a reference template; Spring Boot does not load it automatically.
 
 PowerShell:
 
 ```powershell
+$env:GROQ_API_KEY = "your-groq-api-key"
 $env:GEMINI_API_KEY = "your-google-ai-studio-key"
 ```
 
 macOS/Linux:
 
 ```bash
+export GROQ_API_KEY="your-groq-api-key"
 export GEMINI_API_KEY="your-google-ai-studio-key"
 ```
 
@@ -52,13 +57,17 @@ Optional settings can also be supplied as environment variables. The defaults be
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `GEMINI_MODEL` | `gemini-3.8-flash` | Gemini model identifier |
+| `GROQ_MODEL` | `openai/gpt-oss-120b` | Primary Groq model identifier |
+| `GROQ_TEMPERATURE` | `0.7` | Groq generation temperature |
+| `GROQ_MAX_OUTPUT_TOKENS` | `1024` | Maximum Groq output tokens |
+| `GROQ_REQUEST_TIMEOUT` | `30s` | Maximum time the service waits for Groq |
+| `GEMINI_MODEL` | `gemini-3.8-flash` | Gemini fallback model identifier |
 | `GEMINI_TEMPERATURE` | `0.7` | Generation temperature (0.0–1.0) |
 | `GEMINI_MAX_OUTPUT_TOKENS` | `1024` | Maximum generated output tokens |
-| `GEMINI_REQUEST_TIMEOUT` | `130s` | Maximum time the service waits for a provider response |
+| `GEMINI_REQUEST_TIMEOUT` | `130s` | Maximum time the service waits for Gemini |
 | `COMMUNITY_AI_ALLOWED_ORIGINS` | `*` | Comma-separated browser origins allowed by CORS |
 
-Model availability can vary by API account and region. Set `GEMINI_MODEL` to a model available to your Gemini API key if the default is not available.
+Provider timeouts apply sequentially. If Groq times out or fails, the service may then wait for the full Gemini timeout, so the worst-case wait is approximately both timeout values combined. Model availability and quotas depend on each provider account.
 
 ## Build and run
 
@@ -118,13 +127,14 @@ The API uses `400` for invalid requests, `429` for provider rate limits, `502` f
 mvn test
 ```
 
-Tests mock the Spring AI `ChatClient` and do not call Gemini or require a real API key.
+Tests mock the Spring AI `ChatClient` instances and do not call either provider or require real API keys.
 
 ## Troubleshooting
 
-- **Missing or invalid API key:** confirm `GEMINI_API_KEY` is set in the same shell that starts Maven. The key stays on the server and is never returned by the API.
-- **Model not found or unavailable:** choose a model enabled for your Gemini API key with `GEMINI_MODEL`.
-- **Rate limited:** Gemini can return `429`; the service returns `429 AI_RATE_LIMITED`. Retry according to your API quota and provider guidance.
+- **Missing or invalid API key:** confirm `GROQ_API_KEY` and `GEMINI_API_KEY` are set in the same shell that starts Maven. Both keys stay on the server and are never returned by the API.
+- **Groq failure:** the service automatically attempts Gemini. Check the provider-specific logs and ensure the Gemini key has available quota.
+- **Model not found or unavailable:** select a model enabled for the relevant account using `GROQ_MODEL` or `GEMINI_MODEL`.
+- **Rate limited:** provider rate limits may trigger fallback; if both providers are rate-limited, the service returns `429 AI_RATE_LIMITED`.
 - **Provider unavailable or request timeout:** check provider status and network connectivity. The service returns a sanitized `503` error for recognized connectivity failures.
 - **Browser CORS errors:** add the frontend origin to `COMMUNITY_AI_ALLOWED_ORIGINS`, separated from other origins with a comma.
 - **Port 8082 in use:** stop the conflicting process or override the port with Spring Boot's `--server.port` option.

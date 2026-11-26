@@ -7,70 +7,100 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+import com.google.genai.errors.ApiException;
 import com.thirupaltech.ai.constants.AIConstants;
 import com.thirupaltech.ai.exception.AIServiceException;
+import com.thirupaltech.ai.provider.AIProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClientResponseException;
-import org.springframework.beans.factory.annotation.Qualifier;
 
 @Service
 public class CommunityAIService {
 
     private static final Logger log = LoggerFactory.getLogger(CommunityAIService.class);
 
-    private final ChatClient chatClient;
+    private final AIProvider primaryProvider;
+    private final AIProvider fallbackProvider;
     private final String systemPrompt;
     private final AsyncTaskExecutor providerExecutor;
-    private final Duration providerRequestTimeout;
 
     public CommunityAIService(
-            ChatClient chatClient,
+            @Qualifier("groqAIProvider") AIProvider primaryProvider,
+            @Qualifier("geminiAIProvider") AIProvider fallbackProvider,
             @Value("${community-ai.system-prompt}") String systemPrompt,
-            @Qualifier("aiProviderExecutor") AsyncTaskExecutor providerExecutor,
-            @Value("${community-ai.provider.request-timeout:30s}") Duration providerRequestTimeout) {
-        this.chatClient = chatClient;
+            @Qualifier("aiProviderExecutor") AsyncTaskExecutor providerExecutor) {
+        this.primaryProvider = primaryProvider;
+        this.fallbackProvider = fallbackProvider;
         this.systemPrompt = systemPrompt;
         this.providerExecutor = providerExecutor;
-        this.providerRequestTimeout = providerRequestTimeout;
     }
 
     public String chat(String message) {
         log.debug("Executing community AI provider request");
+        try {
+            return callProvider(primaryProvider, message);
+        } catch (AIServiceException primaryFailure) {
+            if (Thread.currentThread().isInterrupted()) {
+                throw primaryFailure;
+            }
+
+            log.warn(
+                    "{} provider failed with {}; attempting {} fallback",
+                    primaryProvider.name(),
+                    primaryFailure.getErrorCode(),
+                    fallbackProvider.name());
+            try {
+                return callProvider(fallbackProvider, message);
+            } catch (AIServiceException fallbackFailure) {
+                fallbackFailure.addSuppressed(primaryFailure);
+                log.error(
+                        "Both AI providers failed: {}={}, {}={}",
+                        primaryProvider.name(),
+                        primaryFailure.getErrorCode(),
+                        fallbackProvider.name(),
+                        fallbackFailure.getErrorCode());
+                throw fallbackFailure;
+            }
+        }
+    }
+
+    private String callProvider(AIProvider provider, String message) {
+        String providerName = provider.name();
+        Duration requestTimeout = provider.requestTimeout();
         Future<String> response;
         try {
             long submittedAtNanos = System.nanoTime();
-            log.info("Submitting Gemini provider request");
+            log.info("Submitting {} provider request", providerName);
             response = providerExecutor.submit(() -> {
                 long providerStartedAtNanos = System.nanoTime();
                 log.info(
-                        "Gemini provider task started after {} ms in the executor queue",
+                        "{} provider task started after {} ms in the executor queue",
+                        providerName,
                         elapsedMillis(submittedAtNanos, providerStartedAtNanos));
                 try {
-                    String content = chatClient.prompt()
-                            .system(systemPrompt)
-                            .user(message)
-                            .call()
-                            .content();
-                    log.info("Gemini provider call succeeded in {} ms",
+                    String content = provider.generate(systemPrompt, message);
+                    log.info("{} provider call succeeded in {} ms",
+                            providerName,
                             elapsedMillis(providerStartedAtNanos, System.nanoTime()));
                     return content;
                 } catch (RuntimeException exception) {
                     log.warn(
-                            "Gemini provider call failed in {} ms ({})",
+                            "{} provider call failed in {} ms ({})",
+                            providerName,
                             elapsedMillis(providerStartedAtNanos, System.nanoTime()),
                             exception.getClass().getSimpleName());
                     throw exception;
                 }
             });
         } catch (RuntimeException exception) {
-            log.warn("AI provider executor rejected a request");
+            log.warn("{} provider executor rejected a request", providerName);
             throw new AIServiceException(
                     HttpStatus.SERVICE_UNAVAILABLE,
                     AIConstants.PROVIDER_UNAVAILABLE_ERROR_CODE,
@@ -79,7 +109,7 @@ public class CommunityAIService {
         }
 
         try {
-            String answer = response.get(providerRequestTimeout.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
+            String answer = response.get(requestTimeout.toMillis(), TimeUnit.MILLISECONDS);
             if (answer == null || answer.isBlank()) {
                 throw new AIServiceException(
                         HttpStatus.BAD_GATEWAY,
@@ -88,7 +118,7 @@ public class CommunityAIService {
             }
             return answer.trim();
         } catch (TimeoutException exception) {
-            log.warn("Gemini provider request timed out after {} ms", providerRequestTimeout.toMillis());
+            log.warn("{} provider request timed out after {} ms", providerName, requestTimeout.toMillis());
             response.cancel(true);
             throw new AIServiceException(
                     HttpStatus.SERVICE_UNAVAILABLE,
@@ -107,7 +137,7 @@ public class CommunityAIService {
             Throwable providerFailure = exception.getCause();
             if (providerFailure instanceof RuntimeException runtimeException) {
                 AIServiceException serviceException = mapProviderFailure(runtimeException);
-                log.warn("AI provider request failed with {}", serviceException.getErrorCode());
+                log.warn("{} provider request failed with {}", providerName, serviceException.getErrorCode());
                 throw serviceException;
             }
             throw new AIServiceException(
@@ -135,6 +165,20 @@ public class CommunityAIService {
                 String errorCode = status == HttpStatus.TOO_MANY_REQUESTS
                         ? AIConstants.RATE_LIMIT_ERROR_CODE
                         : AIConstants.PROVIDER_ERROR_CODE;
+                return new AIServiceException(status, errorCode, "The AI provider request failed.", exception);
+            }
+            if (cause instanceof ApiException apiException) {
+                int statusCode = apiException.code();
+                HttpStatus status = statusCode == 429
+                        ? HttpStatus.TOO_MANY_REQUESTS
+                        : statusCode >= 500 && statusCode < 600
+                                ? HttpStatus.SERVICE_UNAVAILABLE
+                                : HttpStatus.BAD_GATEWAY;
+                String errorCode = status == HttpStatus.TOO_MANY_REQUESTS
+                        ? AIConstants.RATE_LIMIT_ERROR_CODE
+                        : status == HttpStatus.SERVICE_UNAVAILABLE
+                                ? AIConstants.PROVIDER_UNAVAILABLE_ERROR_CODE
+                                : AIConstants.PROVIDER_ERROR_CODE;
                 return new AIServiceException(status, errorCode, "The AI provider request failed.", exception);
             }
             if (cause instanceof ResourceAccessException
