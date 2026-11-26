@@ -44,11 +44,17 @@ public class CommunityAIService {
         log.debug("Executing community AI provider request");
         Future<String> response;
         try {
+            long startTime = System.currentTimeMillis();
+
+            log.info("---------------- Starting Gemini request-----------------");
             response = providerExecutor.submit(() -> chatClient.prompt()
                     .system(systemPrompt)
                     .user(message)
                     .call()
                     .content());
+            long duration = System.currentTimeMillis() - startTime;
+
+            log.info("---------------- Gemini request completed in {} ms-----------------", duration);
         } catch (RuntimeException exception) {
             log.warn("AI provider executor rejected a request");
             throw new AIServiceException(

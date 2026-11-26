@@ -34,6 +34,8 @@ The configured system prompt sets community-focused behavior and makes it clear 
 
 From this directory, set the API key in your shell. Never put the key in React or commit it to source control.
 
+The root `env.default` file is a reference template; Spring Boot does not load it automatically.
+
 PowerShell:
 
 ```powershell
@@ -46,15 +48,15 @@ macOS/Linux:
 export GEMINI_API_KEY="your-google-ai-studio-key"
 ```
 
-Optional settings can also be supplied as environment variables:
+Optional settings can also be supplied as environment variables. The defaults below match `env.default`.
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `GEMINI_MODEL` | `gemini-2.5-flash-lite` | Gemini model identifier |
+| `GEMINI_MODEL` | `gemini-3.8-flash` | Gemini model identifier |
 | `GEMINI_TEMPERATURE` | `0.7` | Generation temperature (0.0–1.0) |
 | `GEMINI_MAX_OUTPUT_TOKENS` | `1024` | Maximum generated output tokens |
-| `GEMINI_REQUEST_TIMEOUT` | `30s` | Maximum time the service waits for a provider response |
-| `COMMUNITY_AI_ALLOWED_ORIGINS` | `http://localhost:3000,http://localhost:5173` | Comma-separated browser origins allowed by CORS |
+| `GEMINI_REQUEST_TIMEOUT` | `130s` | Maximum time the service waits for a provider response |
+| `COMMUNITY_AI_ALLOWED_ORIGINS` | `*` | Comma-separated browser origins allowed by CORS |
 
 Model availability can vary by API account and region. Set `GEMINI_MODEL` to a model available to your Gemini API key if the default is not available.
 

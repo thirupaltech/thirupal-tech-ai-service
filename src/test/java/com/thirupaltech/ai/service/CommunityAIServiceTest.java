@@ -12,7 +12,7 @@ import com.thirupaltech.ai.exception.AIServiceException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.core.task.SyncTaskExecutor;
+import org.springframework.core.task.support.TaskExecutorAdapter;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.HttpStatus;
@@ -27,7 +27,11 @@ class CommunityAIServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new CommunityAIService(chatClient, "system instructions", new SyncTaskExecutor(), Duration.ofSeconds(30));
+        service = new CommunityAIService(
+                chatClient,
+                "system instructions",
+                new TaskExecutorAdapter(Runnable::run),
+                Duration.ofSeconds(30));
         when(chatClient.prompt()).thenReturn(requestSpec);
         when(requestSpec.system(anyString())).thenReturn(requestSpec);
         when(requestSpec.user(anyString())).thenReturn(requestSpec);
