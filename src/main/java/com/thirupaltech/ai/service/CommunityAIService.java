@@ -2,9 +2,10 @@ package com.thirupaltech.ai.service;
 
 import java.io.IOException;
 import java.time.Duration;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import com.thirupaltech.ai.constants.AIConstants;
 import com.thirupaltech.ai.exception.AIServiceException;
@@ -44,17 +45,30 @@ public class CommunityAIService {
         log.debug("Executing community AI provider request");
         Future<String> response;
         try {
-            long startTime = System.currentTimeMillis();
-
-            log.info("---------------- Starting Gemini request-----------------");
-            response = providerExecutor.submit(() -> chatClient.prompt()
-                    .system(systemPrompt)
-                    .user(message)
-                    .call()
-                    .content());
-            long duration = System.currentTimeMillis() - startTime;
-
-            log.info("---------------- Gemini request completed in {} ms-----------------", duration);
+            long submittedAtNanos = System.nanoTime();
+            log.info("Submitting Gemini provider request");
+            response = providerExecutor.submit(() -> {
+                long providerStartedAtNanos = System.nanoTime();
+                log.info(
+                        "Gemini provider task started after {} ms in the executor queue",
+                        elapsedMillis(submittedAtNanos, providerStartedAtNanos));
+                try {
+                    String content = chatClient.prompt()
+                            .system(systemPrompt)
+                            .user(message)
+                            .call()
+                            .content();
+                    log.info("Gemini provider call succeeded in {} ms",
+                            elapsedMillis(providerStartedAtNanos, System.nanoTime()));
+                    return content;
+                } catch (RuntimeException exception) {
+                    log.warn(
+                            "Gemini provider call failed in {} ms ({})",
+                            elapsedMillis(providerStartedAtNanos, System.nanoTime()),
+                            exception.getClass().getSimpleName());
+                    throw exception;
+                }
+            });
         } catch (RuntimeException exception) {
             log.warn("AI provider executor rejected a request");
             throw new AIServiceException(
@@ -74,6 +88,7 @@ public class CommunityAIService {
             }
             return answer.trim();
         } catch (TimeoutException exception) {
+            log.warn("Gemini provider request timed out after {} ms", providerRequestTimeout.toMillis());
             response.cancel(true);
             throw new AIServiceException(
                     HttpStatus.SERVICE_UNAVAILABLE,
@@ -103,6 +118,10 @@ public class CommunityAIService {
         } catch (AIServiceException exception) {
             throw exception;
         }
+    }
+
+    private static long elapsedMillis(long startTimeNanos, long endTimeNanos) {
+        return TimeUnit.NANOSECONDS.toMillis(endTimeNanos - startTimeNanos);
     }
 
     private AIServiceException mapProviderFailure(RuntimeException exception) {
