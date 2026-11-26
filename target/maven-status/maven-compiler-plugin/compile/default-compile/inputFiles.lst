@@ -7,5 +7,8 @@ D:\Thirupal\Source\Account_2\thirupal-tech-ai-service\src\main\java\com\thirupal
 D:\Thirupal\Source\Account_2\thirupal-tech-ai-service\src\main\java\com\thirupaltech\ai\dto\AIErrorResponse.java
 D:\Thirupal\Source\Account_2\thirupal-tech-ai-service\src\main\java\com\thirupaltech\ai\exception\AIServiceException.java
 D:\Thirupal\Source\Account_2\thirupal-tech-ai-service\src\main\java\com\thirupaltech\ai\exception\GlobalExceptionHandler.java
+D:\Thirupal\Source\Account_2\thirupal-tech-ai-service\src\main\java\com\thirupaltech\ai\provider\AIProvider.java
+D:\Thirupal\Source\Account_2\thirupal-tech-ai-service\src\main\java\com\thirupaltech\ai\provider\GeminiAIProvider.java
+D:\Thirupal\Source\Account_2\thirupal-tech-ai-service\src\main\java\com\thirupaltech\ai\provider\GroqAIProvider.java
 D:\Thirupal\Source\Account_2\thirupal-tech-ai-service\src\main\java\com\thirupaltech\ai\service\CommunityAIService.java
 D:\Thirupal\Source\Account_2\thirupal-tech-ai-service\src\main\java\com\thirupaltech\ai\ThirupalTechAiServiceApplication.java

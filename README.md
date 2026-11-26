@@ -14,7 +14,7 @@ React application
         -> GeminiAIProvider -> Google Gemini API (fallback)
 ```
 
-The configured system prompt sets community-focused behavior and makes it clear that current events or program details are not available. The prompt, model, and generation settings are configurable without exposing provider credentials to the React client.
+The configured system prompt favors direct, concise plain-language answers and avoids dense formatting unless requested. It also makes clear that current events or program details are not available. The prompt, model, and generation settings are configurable without exposing provider credentials to the React client.
 
 ## Technology stack
 

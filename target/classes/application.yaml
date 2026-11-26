@@ -2,6 +2,14 @@
   application:
     name: thirupal-tech-ai-service
   ai:
+    openai:
+      base-url: https://api.groq.com/openai
+      api-key: ${GROQ_API_KEY:}
+      chat:
+        options:
+          model: ${GROQ_MODEL:openai/gpt-oss-120b}
+          temperature: ${GROQ_TEMPERATURE:0.7}
+          max-completion-tokens: ${GROQ_MAX_OUTPUT_TOKENS:1024}
     google:
       genai:
         api-key: ${GEMINI_API_KEY:}
@@ -20,7 +28,8 @@ community-ai:
   cors:
     allowed-origins: ${COMMUNITY_AI_ALLOWED_ORIGINS:*}
   provider:
-    request-timeout: ${GEMINI_REQUEST_TIMEOUT:130s}
+    groq-request-timeout: ${GROQ_REQUEST_TIMEOUT:30s}
+    gemini-request-timeout: ${GEMINI_REQUEST_TIMEOUT:130s}
 
 management:
   endpoints:

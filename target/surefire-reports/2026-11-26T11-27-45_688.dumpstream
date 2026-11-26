@@ -1,4 +1,4 @@
-# Created at 2026-11-26T09:17:03.938
+# Created at 2026-11-26T11:27:45.984
 Boot Manifest-JAR contains absolute paths in classpath 'D:\Thirupal\Source\Account_2\thirupal-tech-ai-service\target\test-classes'
 Hint: <argLine>-Djdk.net.URLClassPath.disableClassPathURLCheck=true</argLine>
 'other' has different root
